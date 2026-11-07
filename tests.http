@@ -1,0 +1,163 @@
+
+### ==========================================
+### TASK 5 - NOSQL INJECTION SECURITY TESTS
+### ==========================================
+
+@baseUrl = http://localhost:4000/api/instructors
+
+
+### ==========================================
+### BASELINE TESTS - NORMAL BEHAVIOR
+### ==========================================
+
+### Test 1: Normal login with wrong password
+### Expected: 401 Invalid credentials
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": "wrong"
+}
+
+
+### Test 2: Honest instructor search
+### Expected: Matching instructor records
+
+GET {{baseUrl}}/search?name=Smith
+
+
+### ==========================================
+### ATTACK 1 - AUTHENTICATION BYPASS
+### ==========================================
+
+### Test 3: $ne injection
+### Expected AFTER FIX: Request rejected (400)
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": {
+        "$ne": null
+    },
+    "password": {
+        "$ne": null
+    }
+}
+
+
+### Test 4: $gt injection
+### Expected AFTER FIX: Request rejected (400)
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": {
+        "$gt": ""
+    },
+    "password": {
+        "$gt": ""
+    }
+}
+
+
+### ==========================================
+### ATTACK 2 - LEAK HIDDEN DATA
+### ==========================================
+
+### Test 5: Search using role[$ne]
+### Expected AFTER FIX: Request rejected (400)
+### Must NOT return admin private information
+
+GET {{baseUrl}}/search?role%5B%24ne%5D=instructor
+
+
+### ==========================================
+### ATTACK 3 - PASSWORD EXTRACTION
+### ==========================================
+
+### Test 6: $regex password injection
+### Expected AFTER FIX: Request rejected (400)
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": {
+        "$regex": "^S"
+    }
+}
+
+
+### Test 7: Another $regex password attempt
+### Expected AFTER FIX: Request rejected (400)
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": {
+        "$regex": "^S3"
+    }
+}
+
+
+### ==========================================
+### ATTACK 4 - JAVASCRIPT INJECTION
+### ==========================================
+
+### Test 8: $where password length injection
+### Expected AFTER FIX: Request rejected (400)
+
+GET {{baseUrl}}/search?%24where=this.password.length%3E10
+
+
+### Test 9: $where API key injection
+### Expected AFTER FIX: Request rejected (400)
+
+GET {{baseUrl}}/search?%24where=this.apiKey%20%26%26%20this.apiKey.indexOf(%27sk_live%27)===0
+
+
+### ==========================================
+### ADDITIONAL INPUT VALIDATION TESTS
+### ==========================================
+
+### Test 10: Username is a number
+### Expected AFTER FIX: Request rejected (400)
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": 12345,
+    "password": "anything"
+}
+
+
+### Test 11: Empty username and password
+### Expected AFTER FIX: Request rejected (400)
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": "",
+    "password": ""
+}
+
+
+### Test 12: Username is an array
+### Expected AFTER FIX: Request rejected (400)
+
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+    "username": ["admin"],
+    "password": "anything"
+}
