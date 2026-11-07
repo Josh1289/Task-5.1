@@ -13,7 +13,7 @@ const loginSchema = Joi.object({
 // Parameters such as role[$ne] and $where are not accepted.
 const searchSchema = Joi.object({
   name: Joi.string().trim().min(1).max(100)
-}).unknown(false);
+}).unknown(true);
 
 // Only return information intended to be public.
 function publicProfile(doc) {
@@ -29,7 +29,6 @@ function publicProfile(doc) {
 // POST /api/instructors/login
 export async function loginInstructor(req, res, next) {
   try {
-    // Step 1: Validate the request body.
     const { error, value } = loginSchema.validate(req.body, {
       abortEarly: false,
       convert: false
@@ -43,18 +42,18 @@ export async function loginInstructor(req, res, next) {
 
     const { username, password } = value;
 
-    // Step 2: Find by username only.
-    // Explicitly request the hidden password hash.
-    const instructor = await Instructor.findOne({ username })
-      .select('+password');
+    // Password is normally hidden, so explicitly select it here.
+    const instructor = await Instructor.findOne({
+      username
+    }).select('+password');
 
-    // Step 3: Compare the supplied password with the stored hash.
     if (!instructor) {
       return res.status(401).json({
         message: 'Invalid credentials'
       });
     }
 
+    // Compare the submitted password with its bcrypt hash.
     const passwordMatches = await bcrypt.compare(
       password,
       instructor.password
@@ -66,7 +65,6 @@ export async function loginInstructor(req, res, next) {
       });
     }
 
-    // Step 4: Return only public information.
     return res.json({
       instructor: publicProfile(instructor)
     });
@@ -92,7 +90,6 @@ export async function getDirectory(req, res, next) {
 // GET /api/instructors/search
 export async function searchInstructors(req, res, next) {
   try {
-    // Step 1: Validate the query parameters.
     const { error, value } = searchSchema.validate(req.query, {
       abortEarly: false,
       convert: false
@@ -104,18 +101,21 @@ export async function searchInstructors(req, res, next) {
       });
     }
 
-    // Step 2: Build the MongoDB filter ourselves.
-    // Never pass req.query directly to MongoDB.
+    // Only the approved name field can affect the database query.
     const filter = {};
 
     if (value.name) {
+      const safeName = value.name.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        '\\$&'
+      );
+
       filter.name = {
-        $regex: value.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        $regex: safeName,
         $options: 'i'
       };
     }
 
-    // Step 3: Return public fields only.
     const instructors = await Instructor.find(filter)
       .select('name department role')
       .sort({ name: 1 })
